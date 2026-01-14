@@ -34,7 +34,7 @@ const HomePage = () => {
     trackEvent("chat_now_clicked");
     setIsLoading(true);
     setTimeout(() => {
-      navigate("/chat"); // SPA navigation
+      navigate("/chat"); 
     }, 800);
   };
 

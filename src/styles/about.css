@@ -1,0 +1,120 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+.hero {
+    text-align: center;
+    padding: clamp(4rem, 10vw, 6rem) 20px;
+    background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+}
+
+.hero h1 {
+    color: #2563eb;
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+}
+
+.hero p {
+    color: #6b7280;
+    font-size: clamp(1rem, 2vw, 1.25rem);
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+/* Team Grid Section - Using the Blurry Background */
+.team-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 2.5rem;
+    padding: 8rem 5vw;
+    justify-items: center;
+    overflow: hidden;
+    
+}
+
+.team-grid::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background-image: url('background.png');
+    background-size: cover;
+    background-position: center;
+    filter: blur(10px);
+    transform: scale(1.1);
+    opacity: 0.6;
+}
+
+/* Team Card - Matches .feature-card */
+.team-card {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(5px);
+    border-radius: 1rem;
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+    max-width: 320px;
+    transition: all 0.3s ease;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.team-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.team-card img {
+    width: 100%;
+    height: 280px;
+    object-fit: cover;
+    /* subtle filter to make images blend with the blue theme */
+}
+
+.team-card h3 {
+    margin: 1.5rem 1.5rem 0.5rem;
+    color: #1f2937;
+    font-size: 1.4rem;
+}
+
+.role {
+    margin: 0 1.5rem 1.5rem;
+    color: #2563eb;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+/* Footer Alignment */
+footer {
+    margin-top: auto;
+}
+
+/* Responsive Fixes */
+@media (max-width: 768px) {
+    .team-grid {
+        padding: 4rem 20px;
+        gap: 2rem;
+    }
+}

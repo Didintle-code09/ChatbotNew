@@ -82,7 +82,7 @@ const HomePage = () => {
     return () => observer.disconnect();
   }, []);
 
-  // Close menu on resize
+  
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 768) setMenuOpen(false);

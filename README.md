@@ -1,5 +1,7 @@
 This is the full code for the website/landing page of the UbuntuBot. More details to be released as time goes on, still under development.
 SIKE!!!!
+
+
 UbuntuBot
 
 UbuntuBot is a simple AI-powered chatbot that provides legal advice. This project is built with a Node.js backend and a Vite-powered React frontend.

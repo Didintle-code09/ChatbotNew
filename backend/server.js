@@ -104,17 +104,21 @@ app.post("/chat", async (req, res) => {
       ? [hfModel, ...publicFallbacks.filter(m => m !== hfModel)]
       : [hfModel, defaultModel, ...publicFallbacks.filter(m => m !== hfModel && m !== defaultModel)];
 
-    // Endpoints to try for each model
-    const endpointsForModel = (model) => [
-      `https://router.huggingface.co/models/${model}`,
-      `https://api-inference.huggingface.co/models/${model}`,
-    ];
+    // Allow an optional model override from the client for testing (e.g., { model: 'openai/gpt-oss-120b:fireworks-ai' })
+    const requestedModel = req.body?.model;
+    if (requestedModel && !modelsToTry.includes(requestedModel)) {
+      modelsToTry.unshift(requestedModel);
+      console.log(`[backend] Model override requested by client: ${requestedModel}`);
+    }
 
-    let hfRes;
+    // We'll use the Router chat-completions endpoint with a messages array (OpenAI-style) which
+    // supports system/user/assistant roles and cleaner continuations for longer outputs.
+    const routerChatEndpoint = "https://router.huggingface.co/v1/chat/completions";
+
     let lastErrText = "";
     let usedModel = null;
 
-    outer: for (const model of modelsToTry) {
+    for (const model of modelsToTry) {
       // Pre-flight: check if the model exists and is accessible using HF Models API
       try {
         const metaRes = await fetch(`https://huggingface.co/api/models/${model}`, {
@@ -123,20 +127,17 @@ app.post("/chat", async (req, res) => {
 
         if (!metaRes.ok) {
           const metaText = await metaRes.text().catch(() => "");
-          // If model is not found, try next model
           if (metaRes.status === 404) {
             console.warn(`HF model ${model} not found (metadata check). Trying next model.`);
             lastErrText = `(${metaRes.status}) ${metaText}`;
             continue; // try next model
           }
 
-          // If unauthorized or forbidden, provide a clear error
           if (metaRes.status === 401 || metaRes.status === 403) {
             console.error(`Access denied for model ${model}:`, metaText);
             return res.status(502).json({ error: `HF access error ${metaRes.status}: ${metaText}. Check HUGGINGFACE_API_KEY and model permissions.` });
           }
 
-          // For other metadata errors log and try next model
           console.warn(`HF metadata check failed for ${model}: ${metaRes.status} ${metaText}`);
           lastErrText = `(${metaRes.status}) ${metaText}`;
           continue;
@@ -147,67 +148,101 @@ app.post("/chat", async (req, res) => {
         continue; // try next model
       }
 
-      const endpoints = endpointsForModel(model);
+      // Build messages array like your working snippet
+      const messagesPayload = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message },
+      ];
 
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`[backend] Calling HF endpoint: ${endpoint}`);
-          hfRes = await fetch(endpoint, {
+      try {
+        console.log(`[backend] Calling HF Router chat-completions with model ${model}`);
+        let hfRes = await fetch(routerChatEndpoint, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${hfKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ model, messages: messagesPayload, max_tokens: 1024, temperature: 0.7 }),
+        });
+
+        if (!hfRes.ok) {
+          const errText = await hfRes.text().catch(() => "");
+          lastErrText = `(${hfRes.status}) ${errText}`;
+
+          // Try next model for 404/410
+          if (hfRes.status === 404 || hfRes.status === 410) {
+            console.warn(`Router returned ${hfRes.status} for model ${model}; trying next model if available`);
+            continue;
+          }
+
+          // Unauthorized / forbidden should be surfaced clearly
+          if (hfRes.status === 401 || hfRes.status === 403) {
+            return res.status(502).json({ error: `HF access error ${hfRes.status}: ${errText}. Check HUGGINGFACE_API_KEY and model permissions.` });
+          }
+
+          // Other errors - return details
+          return res.status(502).json({ error: `HF router error ${hfRes.status}: ${errText}`, hfStatus: hfRes.status, hfBody: errText });
+        }
+
+        // Parse router chat response
+        const data = await hfRes.json();
+        const firstChoice = data?.choices && data.choices[0] ? data.choices[0] : null;
+        let reply = firstChoice?.message?.content ?? firstChoice?.text ?? (data?.generated_text ?? "");
+        let finishReason = firstChoice?.finish_reason ?? null;
+
+        // If reply exists, attempt continuation automatically up to 3 times if truncated
+        let continuationAttempts = 0;
+        while (finishReason === "length" && continuationAttempts < 3) {
+          continuationAttempts++;
+          console.log(`[backend] Continuation attempt ${continuationAttempts} for model ${model}`);
+
+          const contMessages = [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message },
+            { role: "assistant", content: reply },
+            { role: "user", content: "Continue from where you left off. Keep the same formatting." },
+          ];
+
+          const contRes = await fetch(routerChatEndpoint, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${hfKey}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ inputs: prompt, parameters: { max_new_tokens: 512, top_p: 0.95 }, options: { use_cache: false } }),
+            body: JSON.stringify({ model, messages: contMessages, max_tokens: 1024 }),
           });
-        } catch (netErr) {
-          console.error(`Network error calling HF endpoint ${endpoint}:`, netErr.message || netErr);
-          lastErrText = `network error: ${netErr.message || netErr}`;
-          // try next endpoint
-          continue;
+
+          if (!contRes.ok) break; // stop trying continuation
+
+          const contData = await contRes.json().catch(() => null);
+          const contChoice = contData?.choices && contData.choices[0] ? contData.choices[0] : null;
+          const contReply = contChoice?.message?.content ?? contChoice?.text ?? "";
+          finishReason = contChoice?.finish_reason ?? null;
+
+          if (!contReply) break;
+
+          reply = `${reply}\n\n${contReply}`;
         }
 
-        if (hfRes.ok) {
-          console.log(`[backend] HF endpoint succeeded: ${endpoint} (model: ${model})`);
-          usedModel = model;
-          break outer; // success, break out of both loops
-        }
+        // Success — return reply and model
+        usedModel = model;
+        return res.json({ reply, model: usedModel });
 
-        // capture error text for debugging
-        const errText = await hfRes.text().catch(() => "");
-        lastErrText = `(${hfRes.status}) ${errText}`;
-
-        // if model not found (404), break to try next model
-        if (hfRes.status === 404) {
-          console.warn(`HF model ${model} not found at ${endpoint}; trying next model if available`);
-          break; // try next model
-        }
-
-        // if the server indicates 410 (deprecated), try the next endpoint
-        if (hfRes.status === 410) {
-          console.warn(`HF endpoint ${endpoint} returned 410; trying next endpoint`);
-          continue;
-        } else {
-          // non-retryable error — stop and return
-          console.error("Hugging Face error:", hfRes.status, errText);
-          return res.status(502).json({ error: `HF error ${hfRes.status}: ${errText}` });
-        }
+      } catch (netErr) {
+        console.error(`Network error calling HF router chat for model ${model}:`, netErr.message || netErr);
+        lastErrText = `network error: ${netErr.message || netErr}`;
+        continue; // try next model
       }
     }
 
-    if (!hfRes || !hfRes.ok) {
-      console.error("Hugging Face failed on all endpoints and models:", lastErrText);
-      return res.status(502).json({ error: `HF error: ${lastErrText}` });
+    // If we get here, nothing worked for any model
+    console.error("Hugging Face failed on all models:", lastErrText);
+    if (process.env.DEV_MOCK === "true") {
+      console.warn("DEV_MOCK enabled - returning mock reply instead of error");
+      return res.json({ reply: "MOCK: I couldn't reach the AI provider, but I can still help with basic info. Try asking 'How do I file a complaint?'", model: "mock" });
     }
 
-    const hfData = await hfRes.json();
-    // HF may return an array [{ generated_text: "..." }] or { generated_text: "..." }
-    const replyText = Array.isArray(hfData)
-      ? hfData[0]?.generated_text || JSON.stringify(hfData)
-      : hfData.generated_text || JSON.stringify(hfData);
-
-    // Return reply and which model was used (helps with debugging and verification)
-    res.json({ reply: replyText, model: usedModel || hfModel });
+    return res.status(502).json({ error: `HF error: ${lastErrText}`, hfStatus: null, hfBody: lastErrText });
 
   } catch (error) {
     console.error("AI error:", error);
@@ -216,6 +251,23 @@ app.post("/chat", async (req, res) => {
 });
 
 /* --------------------- START SERVER --------------------- */
-app.listen(PORT, () =>
+const server = app.listen(PORT, () =>
   console.log(`🚀 Server running on http://localhost:${PORT}`)
 );
+
+// Diagnostics: log uncaught errors and exits to help root-cause intermittent exit
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection', reason);
+});
+process.on('exit', (code) => {
+  console.error('Process exit with code', code);
+});
+
+// Optional: gracefully close server on SIGTERM
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down');
+  server.close(() => process.exit(0));
+});

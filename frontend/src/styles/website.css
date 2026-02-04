@@ -667,3 +667,67 @@ footer p {
     gap: 0.4rem;
   }
 }
+
+/* Additional chat utilities */
+.starter-tiles {
+  background: #fafafa;
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+}
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.starter-tile {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem;
+  border-radius: 8px;
+  background: white;
+  border: 1px solid #eef2ff;
+  cursor: pointer;
+}
+.starter-tile .tile-icon { font-size: 1.25rem; }
+.starter-tile .tile-text { font-size: 0.9rem; }
+
+.typing-indicator { display: flex; gap: 4px; align-items: center; padding: 0.45rem 0.8rem; }
+.typing-dot { width: 8px; height: 8px; background: #cbd5e1; border-radius: 50%; animation: blink 1s infinite; }
+@keyframes blink { 0% { opacity: 0.2 } 50% { opacity: 1 } 100% { opacity: 0.2 } }
+
+.history-sidebar {
+  position: fixed;
+  right: -340px;
+  top: 96px;
+  width: 320px;
+  height: calc(100vh - 140px);
+  background: #fff;
+  border-left: 1px solid #eef2f6;
+  padding: 1rem;
+  box-shadow: -10px 20px 40px rgba(18,39,68,0.06);
+  transition: right 0.28s ease;
+  z-index: 200;
+}
+.history-sidebar.open { right: 20px; }
+.history-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; }
+.history-list { overflow-y:auto; max-height: calc(100% - 80px); }
+.history-item { padding: 0.5rem; border-radius:8px; margin-bottom:0.5rem; cursor:pointer; border:1px solid transparent; }
+.history-item.active { background:#f3f4f6; border-color:#e2e8f0; }
+.history-item-title { font-weight:600; }
+.history-footer { margin-top: 0.5rem; }
+.clear-history { background:transparent; border:none; color:#ef4444; cursor:pointer; }
+.no-history { color:#6b7280; padding:1rem; }
+
+.legal-warning { background:#fff7ed; border-left:3px solid #f59e0b; padding:0.5rem; border-radius:4px; margin:0.5rem 0; }
+.legal-tip { background:#ecfccb; border-left:3px solid #84cc16; padding:0.5rem; border-radius:4px; margin:0.5rem 0; }
+.legal-resource { background:#eef2ff; border-left:3px solid #60a5fa; padding:0.5rem; border-radius:4px; margin:0.5rem 0; }
+
+.table-container { overflow:auto; margin:0.5rem 0; }
+.markdown-table { width:100%; border-collapse:collapse; }
+.markdown-table th, .markdown-table td { border:1px solid #e6edf3; padding:0.5rem; text-align:left; }
+
+.new-chat-btn { position: fixed; right: 24px; bottom: 24px; background:#2563eb; color:white; border:none; padding:0.6rem 0.9rem; border-radius:999px; box-shadow:0 6px 20px rgba(37,99,235,0.12); cursor:pointer; }
+
+@media (max-width: 800px) { .tile-grid { grid-template-columns: repeat(2, 1fr); } .history-sidebar { right: -360px; } }
